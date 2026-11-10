@@ -1,0 +1,816 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs, where } from 'firebase/firestore';
+import { Volume2, VolumeX, Music, Music3, CheckCircle, XCircle, Award, Download, Printer, ArrowRight, Save, ShieldAlert, Lock, User } from 'lucide-react';
+
+// --- Firebase Initialization ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'sd3-muara-rupit-quiz';
+
+// --- Data Soal ---
+const baseMathQuestions = [
+  { id: 'm1', type: 'PG', text: 'Hasil dari 1/2 + 1/4 adalah...', options: ['3/4', '2/6', '2/4', '1/6'], correct: ['3/4'], explanation: 'Samakan penyebut menjadi 4. 2/4 + 1/4 = 3/4.' },
+  { id: 'm2', type: 'TF', text: 'Benar atau Salah: Sebuah kubus dengan panjang rusuk 5 cm memiliki volume 125 cm³.', options: ['Benar', 'Salah'], correct: ['Benar'], explanation: 'Volume Kubus = s x s x s = 5 x 5 x 5 = 125.' },
+  { id: 'm3', type: 'MA', text: 'Pilih yang BUKAN merupakan bangun ruang!', options: ['Kubus', 'Segitiga', 'Balok', 'Lingkaran'], correct: ['Segitiga', 'Lingkaran'], explanation: 'Segitiga dan Lingkaran adalah bangun datar (2D), bukan bangun ruang (3D).' },
+  { id: 'm4', type: 'PG', text: 'Perbandingan uang Ali dan Budi adalah 2 : 3. Jika uang Budi Rp 15.000, berapa uang Ali?', options: ['Rp 10.000', 'Rp 5.000', 'Rp 20.000', 'Rp 30.000'], correct: ['Rp 10.000'], explanation: 'Uang Ali = (2/3) x 15.000 = 10.000.' },
+  { id: 'm5', type: 'TF', text: 'Benar atau Salah: Peluang munculnya angka genap pada pelemparan satu buah dadu adalah 1/2.', options: ['Benar', 'Salah'], correct: ['Benar'], explanation: 'Mata dadu genap: 2, 4, 6 (ada 3). Total mata dadu: 6. Peluang = 3/6 = 1/2.' },
+  { id: 'm6', type: 'PG', text: 'Sebuah balok memiliki panjang 10 cm, lebar 5 cm, dan tinggi 4 cm. Berapakah volumenya?', options: ['200 cm³', '100 cm³', '150 cm³', '50 cm³'], correct: ['200 cm³'], explanation: 'Volume Balok = p x l x t = 10 x 5 x 4 = 200.' },
+  { id: 'm7', type: 'MA', text: 'Manakah dari pecahan berikut yang senilai dengan 1/3?', options: ['2/6', '3/9', '4/10', '5/15'], correct: ['2/6', '3/9', '5/15'], explanation: 'Jika pembilang dan penyebut dikalikan angka yang sama, hasilnya senilai.' },
+];
+
+const baseIndoQuestions = [
+  { id: 'i1', type: 'PG', text: 'Karangan yang menggambarkan suatu objek secara rinci seolah-olah pembaca dapat melihat, mendengar, atau merasakannya disebut teks...', options: ['Naratif', 'Deskripsi', 'Eksposisi', 'Persuasi'], correct: ['Deskripsi'], explanation: 'Teks deskripsi bertujuan memberikan gambaran detail tentang suatu objek.' },
+  { id: 'i2', type: 'TF', text: 'Benar atau Salah: Surat resmi selalu dilengkapi dengan kop surat (kepala surat) dan nomor surat.', options: ['Benar', 'Salah'], correct: ['Benar'], explanation: 'Kop surat dan nomor surat adalah ciri utama yang membedakan surat resmi dan tidak resmi.' },
+  { id: 'i3', type: 'MA', text: 'Unsur-unsur berita yang baik harus mencakup unsur ADiKSiMBa. Manakah yang termasuk di dalamnya?', options: ['Apa', 'Siapa', 'Kapan', 'Kenapa tidak'], correct: ['Apa', 'Siapa', 'Kapan'], explanation: 'ADiKSiMBa singkatan dari Apa, Di mana, Kapan, Siapa, Mengapa, Bagaimana.' },
+  { id: 'i4', type: 'PG', text: 'Baris demi baris pada puisi disebut juga dengan...', options: ['Bait', 'Larik', 'Rima', 'Majas'], correct: ['Larik'], explanation: 'Larik adalah baris dalam puisi, sedangkan kumpulan larik membentuk bait.' },
+  { id: 'i5', type: 'TF', text: 'Benar atau Salah: Sinonim dari kata "Bohong" adalah "Jujur".', options: ['Benar', 'Salah'], correct: ['Salah'], explanation: 'Jujur adalah ANTONIM (lawan kata) dari Bohong. Sinonimnya adalah Dusta.' },
+  { id: 'i6', type: 'PG', text: 'Kalimat yang berisi perintah atau larangan disebut kalimat...', options: ['Tanya', 'Berita', 'Imperatif', 'Pasif'], correct: ['Imperatif'], explanation: 'Kalimat imperatif bersifat memerintah atau memberi instruksi.' },
+  { id: 'i7', type: 'MA', text: 'Pilih ciri-ciri pantun di bawah ini!', options: ['Terdiri dari 4 baris', 'Bersajak a-b-a-b', 'Baris 1 & 2 adalah isi', 'Baris 3 & 4 adalah isi'], correct: ['Terdiri dari 4 baris', 'Bersajak a-b-a-b', 'Baris 3 & 4 adalah isi'], explanation: 'Baris 1 dan 2 pada pantun merupakan sampiran, bukan isi.' },
+];
+
+// Helper to generate 50 questions
+const generate50Questions = (baseQuestions, subject) => {
+  let questions = [...baseQuestions];
+  let idCounter = 10;
+  
+  // Pad until 50
+  while (questions.length < 50) {
+    if (subject === 'matematika') {
+      // Generate dynamic math questions
+      const num1 = Math.floor(Math.random() * 20) + 1;
+      const num2 = Math.floor(Math.random() * 10) + 1;
+      const op = ['+', '-', 'x'][Math.floor(Math.random() * 3)];
+      let ans = 0;
+      if (op === '+') ans = num1 + num2;
+      if (op === '-') ans = num1 - num2;
+      if (op === 'x') ans = num1 * num2;
+      
+      const wrong1 = ans + (Math.floor(Math.random() * 5) + 1);
+      const wrong2 = ans - (Math.floor(Math.random() * 5) + 1);
+      const wrong3 = ans + 10;
+
+      const options = [ans.toString(), wrong1.toString(), wrong2.toString(), wrong3.toString()].sort(() => Math.random() - 0.5);
+
+      questions.push({
+        id: `gen_m_${idCounter++}`,
+        type: 'PG',
+        text: `Berapakah hasil dari ${num1} ${op} ${num2}?`,
+        options: [...new Set(options)], // ensure unique
+        correct: [ans.toString()],
+        explanation: `Perhitungan matematika dasar: ${num1} ${op} ${num2} = ${ans}`
+      });
+    } else {
+      // Duplicate and slightly vary Indo questions for filler to reach 50
+      const template = baseQuestions[Math.floor(Math.random() * baseQuestions.length)];
+      questions.push({
+        ...template,
+        id: `gen_i_${idCounter++}`,
+      });
+    }
+  }
+  return questions.slice(0, 50); // Ensure exactly 50
+};
+
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [currentView, setCurrentView] = useState('landing'); // landing, material, quiz, certificate, dashboard
+  const [profile, setProfile] = useState({ name: '', studentClass: '6a', date: '' });
+  const [subject, setSubject] = useState('');
+  const [quizData, setQuizData] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState([]);
+  const [feedback, setFeedback] = useState(null); // { isCorrect, explanation }
+  
+  // Settings
+  const [settings, setSettings] = useState({ tts: true, sound: true });
+  
+  // Dashboard state
+  const [records, setRecords] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // --- New States for Modals and Pin ---
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [modalMessage, setModalMessage] = useState(null);
+
+  // --- Auth & Firebase Init ---
+  useEffect(() => {
+    if (!auth) return;
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsubscribe();
+  }, []);
+
+  // --- Dashboard Data Fetching ---
+  useEffect(() => {
+    if (!user || !db) return;
+    try {
+      const q = query(
+        collection(db, 'artifacts', appId, 'public', 'data', 'quizResults')
+      );
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Sort in memory to avoid complex index requirements
+        data.sort((a, b) => b.timestamp - a.timestamp);
+        setRecords(data);
+      }, (error) => console.error("Snapshot error:", error));
+      return () => unsubscribe();
+    } catch(err) {
+      console.error(err);
+    }
+  }, [user]);
+
+  // --- Audio Logic ---
+  const playSoundEffect = (type) => {
+    if (!settings.sound) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      if (type === 'correct') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.5);
+      } else if (type === 'wrong') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+      }
+    } catch(e) { console.error("Audio error", e) }
+  };
+
+  const speak = (text) => {
+    if (!settings.tts || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel(); // Stop current speech
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'id-ID';
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // --- Handlers ---
+  const handleSelectSubject = async (selectedSub) => {
+    if (!profile.name || !profile.date) {
+      setModalMessage("Harap isi nama dan tanggal pengerjaan terlebih dahulu ya anak hebat!");
+      return;
+    }
+    
+    // Check Firebase jika sudah main di tanggal ini
+    if (user && db) {
+      try {
+        const q = query(
+          collection(db, 'artifacts', appId, 'public', 'data', 'quizResults'),
+          where('name', '==', profile.name),
+          where('class', '==', profile.studentClass),
+          where('date', '==', profile.date),
+          where('subject', '==', selectedSub)
+        );
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          setModalMessage("Maaf ya, kamu sudah mengerjakan kuis mata pelajaran ini pada tanggal tersebut. Permainan hanya bisa dilakukan sekali per jadwal! Silakan coba pelajaran lain atau di hari berbeda.");
+          return;
+        }
+      } catch (err) {
+        console.error("Firebase check error", err);
+      }
+    }
+
+    setSubject(selectedSub);
+    setCurrentView('material');
+  };
+
+  const beginQuiz = () => {
+    const questions = generate50Questions(
+      subject === 'matematika' ? baseMathQuestions : baseIndoQuestions, 
+      subject
+    );
+    setQuizData(questions);
+    setCurrentIndex(0);
+    setScore(0);
+    setFeedback(null);
+    setSelectedAnswers([]);
+    setCurrentView('quiz');
+  };
+
+  // Auto-read question if TTS is on
+  useEffect(() => {
+    if (currentView === 'quiz' && settings.tts && quizData.length > 0 && !feedback) {
+       const q = quizData[currentIndex];
+       speak(q.text + ". Pilihan jawabannya adalah: " + q.options.join(". "));
+    }
+  }, [currentIndex, currentView, settings.tts, feedback]);
+
+  const handleAnswerSelect = (opt) => {
+    const q = quizData[currentIndex];
+    if (q.type === 'MA') {
+      if (selectedAnswers.includes(opt)) {
+        setSelectedAnswers(selectedAnswers.filter(a => a !== opt));
+      } else {
+        setSelectedAnswers([...selectedAnswers, opt]);
+      }
+    } else {
+      setSelectedAnswers([opt]);
+    }
+  };
+
+  const submitAnswer = () => {
+    const q = quizData[currentIndex];
+    let isCorrect = false;
+
+    if (q.type === 'MA') {
+      // Check if arrays match exactly
+      const sortedSelected = [...selectedAnswers].sort();
+      const sortedCorrect = [...q.correct].sort();
+      isCorrect = JSON.stringify(sortedSelected) === JSON.stringify(sortedCorrect);
+    } else {
+      isCorrect = selectedAnswers.length > 0 && selectedAnswers[0] === q.correct[0];
+    }
+
+    if (isCorrect) {
+      setScore(s => s + 2); // 50 questions * 2 = 100 max score
+      playSoundEffect('correct');
+    } else {
+      playSoundEffect('wrong');
+    }
+
+    setFeedback({ isCorrect, explanation: q.explanation });
+  };
+
+  const nextQuestion = async () => {
+    setFeedback(null);
+    setSelectedAnswers([]);
+    window.speechSynthesis.cancel();
+    
+    if (currentIndex + 1 < quizData.length) {
+      setCurrentIndex(i => i + 1);
+    } else {
+      // Finish Quiz
+      await saveResult();
+      setCurrentView('certificate');
+    }
+  };
+
+  const saveResult = async () => {
+    if (!user || !db) return;
+    setIsSaving(true);
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'quizResults'), {
+        name: profile.name,
+        class: profile.studentClass,
+        date: profile.date,
+        subject: subject,
+        score: score, // Final score out of 100
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      console.error("Error saving doc: ", e);
+    }
+    setIsSaving(false);
+  };
+
+  const resetQuiz = () => {
+    setProfile({ name: '', studentClass: '6a', date: '' });
+    setCurrentView('landing');
+  };
+
+  // --- Export Functions ---
+  const exportCSV = () => {
+    const headers = ['Nama', 'Kelas', 'Tanggal', 'Mata Pelajaran', 'Nilai'];
+    const rows = records.map(r => [r.name, r.class, r.date, r.subject, r.score]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n" 
+      + rows.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "Rekap_Nilai_SD3MuaraRupit.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportWord = () => {
+    const tableHtml = document.getElementById('report-table').outerHTML;
+    const html = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Laporan Nilai</title></head>
+      <body>
+        <h2 style="text-align: center;">Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2>
+        ${tableHtml}
+      </body>
+      </html>
+    `;
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'Laporan_Nilai.doc';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const printReport = () => {
+    window.print();
+  };
+
+  const handlePinSubmit = () => {
+    if (pin === 'guruhebat') {
+      setShowPinModal(false);
+      setPin('');
+      setPinError('');
+      setCurrentView('dashboard');
+    } else {
+      setPinError('Akses Ditolak! Dasbor ini hanya khusus untuk guru.');
+    }
+  };
+
+
+  // --- Render Components ---
+
+  const renderLanding = () => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 animate-in fade-in zoom-in duration-500">
+      <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl border-4 border-yellow-300 max-w-lg w-full text-center relative overflow-hidden">
+        {/* Decorative elements */}
+        <div className="absolute top-[-20px] left-[-20px] w-24 h-24 bg-pink-300 rounded-full opacity-50 blur-xl"></div>
+        <div className="absolute bottom-[-20px] right-[-20px] w-32 h-32 bg-blue-300 rounded-full opacity-50 blur-xl"></div>
+        
+        <h1 className="text-3xl font-extrabold text-blue-600 mb-2 relative z-10">
+          Assalamu'alaikum Anak Hebat! 🌟
+        </h1>
+        <h2 className="text-xl font-bold text-gray-700 mb-6 relative z-10">SD Negeri 3 Muara Rupit</h2>
+        
+        <div className="space-y-4 text-left relative z-10">
+          <div>
+            <label className="block text-gray-700 font-bold mb-1">Nama Lengkap:</label>
+            <input 
+              type="text" 
+              value={profile.name}
+              onChange={e => setProfile({...profile, name: e.target.value})}
+              className="w-full p-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-200 outline-none transition-all"
+              placeholder="Tulis namamu di sini..."
+            />
+          </div>
+          <div className="flex space-x-4">
+            <div className="flex-1">
+              <label className="block text-gray-700 font-bold mb-1">Kelas:</label>
+              <select 
+                value={profile.studentClass}
+                onChange={e => setProfile({...profile, studentClass: e.target.value})}
+                className="w-full p-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 outline-none"
+              >
+                <option value="6a">6 A</option>
+                <option value="6b">6 B</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-gray-700 font-bold mb-1">Tanggal Pengerjaan:</label>
+              <input 
+                type="date" 
+                value={profile.date}
+                onChange={e => setProfile({...profile, date: e.target.value})}
+                className="w-full p-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 bg-yellow-50 p-4 rounded-xl border-2 border-yellow-200 text-sm text-left text-gray-700 relative z-10 shadow-sm">
+          <p className="font-bold mb-1 text-yellow-800">📌 Petunjuk Pengerjaan:</p>
+          <ul className="list-disc pl-5 space-y-1 text-yellow-900 font-medium">
+            <li>Isi nama lengkap, pilih kelas, dan masukkan tanggal pengerjaan hari ini.</li>
+            <li>Setiap siswa hanya bisa mengerjakan kuis <strong>1 kali</strong> per mata pelajaran di tanggal yang sama.</li>
+            <li>Ada soal Pilihan Ganda, Benar/Salah, dan memilih Jawaban Lebih dari Satu.</li>
+            <li>Gunakan tombol di pojok kanan atas untuk mematikan/menghidupkan suara soal.</li>
+          </ul>
+        </div>
+
+        <div className="mt-8 relative z-10">
+          <p className="text-gray-600 mb-3 font-semibold">Pilih Mata Pelajaran:</p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button 
+              onClick={() => handleSelectSubject('bahasa indonesia')}
+              className="flex-1 bg-gradient-to-r from-red-400 to-pink-500 hover:from-red-500 hover:to-pink-600 text-white font-bold py-3 px-6 rounded-2xl shadow-lg transform transition hover:scale-105"
+            >
+              📖 TKA B. Indonesia
+            </button>
+            <button 
+              onClick={() => handleSelectSubject('matematika')}
+              className="flex-1 bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white font-bold py-3 px-6 rounded-2xl shadow-lg transform transition hover:scale-105"
+            >
+              🧮 TKA Matematika
+            </button>
+          </div>
+        </div>
+
+        {/* Info / Alert Modal */}
+        {modalMessage && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
+            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl max-w-md w-full text-center border-4 border-yellow-400 transform transition-all">
+              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShieldAlert className="text-yellow-600" size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Perhatian</h3>
+              <p className="text-gray-600 mb-6 font-medium leading-relaxed">{modalMessage}</p>
+              <button 
+                onClick={() => setModalMessage(null)}
+                className="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold py-3 rounded-xl transition-colors shadow-sm"
+              >
+                Paham!
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Teacher PIN Modal */}
+        {showPinModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
+            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center border-4 border-blue-400 transform transition-all">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShieldAlert className="text-blue-600" size={32} />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">Dasbor Guru</h3>
+              <p className="text-gray-500 text-sm mb-6">Masukkan kata sandi untuk mengakses rekap nilai siswa.</p>
+              
+              <input 
+                type="password" 
+                value={pin}
+                onChange={(e) => {
+                  setPin(e.target.value);
+                  setPinError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handlePinSubmit()}
+                className={`w-full p-3 rounded-xl border-2 mb-2 text-center text-xl tracking-widest focus:outline-none transition-colors ${pinError ? 'border-red-400 focus:border-red-500 bg-red-50 text-red-700' : 'border-blue-200 focus:border-blue-500'}`}
+                placeholder="••••••••"
+              />
+              
+              {pinError ? (
+                <p className="text-red-500 text-sm font-bold mb-4 animate-bounce">{pinError}</p>
+              ) : (
+                <div className="h-4 mb-4"></div>
+              )}
+              
+              <div className="flex gap-3 mt-2">
+                 <button 
+                  onClick={() => {
+                    setShowPinModal(false);
+                    setPin('');
+                    setPinError('');
+                  }} 
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-xl transition-colors"
+                >
+                  Batal
+                </button>
+                 <button 
+                  onClick={handlePinSubmit}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
+                >
+                  Masuk
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+      
+      {/* Visible button for dashboard access */}
+      <button 
+        onClick={() => setShowPinModal(true)}
+        className="fixed bottom-4 right-4 bg-blue-800 text-white p-3 md:px-5 md:py-3 rounded-full shadow-xl hover:bg-blue-900 hover:scale-105 transition-all flex items-center justify-center gap-2 font-bold text-sm z-40 border-2 border-white"
+        title="Area Guru"
+      >
+        <ShieldAlert size={20} /> <span className="hidden sm:inline">Masuk Dasbor Guru</span>
+      </button>
+    </div>
+  );
+
+  const renderQuiz = () => {
+    if (quizData.length === 0) return null;
+    const q = quizData[currentIndex];
+
+    return (
+      <div className="flex flex-col items-center justify-start min-h-[90vh] p-4 w-full max-w-3xl mx-auto">
+        {/* Header Bar */}
+        <div className="w-full bg-white rounded-2xl shadow-md p-4 mb-6 flex justify-between items-center border-b-4 border-blue-400">
+          <div className="flex items-center gap-4">
+            <div className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg font-bold">
+              Soal {currentIndex + 1} / 50
+            </div>
+            <div className="text-sm font-semibold text-gray-600 hidden sm:block">
+              {profile.name} - Kelas {profile.studentClass.toUpperCase()}
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+             <button 
+              onClick={() => setSettings(s => ({...s, tts: !s.tts}))}
+              className={`p-2 rounded-full ${settings.tts ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-400'}`}
+              title="Narasi Suara"
+            >
+              {settings.tts ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            </button>
+            <button 
+              onClick={() => setSettings(s => ({...s, sound: !s.sound}))}
+              className={`p-2 rounded-full ${settings.sound ? 'bg-purple-100 text-purple-600' : 'bg-gray-200 text-gray-400'}`}
+              title="Efek Suara"
+            >
+              {settings.sound ? <Music size={20} /> : <Music3 size={20} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Question Card */}
+        <div className="bg-white w-full rounded-3xl shadow-xl p-6 sm:p-8 border-2 border-dashed border-gray-300 relative animate-in slide-in-from-bottom-4 duration-300">
+           <button 
+              onClick={() => speak(q.text + ". " + q.options.join(". "))}
+              className="absolute top-4 right-4 bg-blue-50 p-2 rounded-full text-blue-500 hover:bg-blue-100 transition"
+              title="Bacakan Soal"
+            >
+              <Volume2 size={24} />
+           </button>
+
+          <h2 className="text-2xl font-bold text-gray-800 mb-6 pr-10 leading-relaxed">
+            {q.text}
+          </h2>
+
+          <div className="space-y-3">
+            {q.type === 'MA' && <p className="text-sm text-pink-500 font-bold mb-2">*Pilih semua jawaban yang benar</p>}
+            
+            {q.options.map((opt, idx) => {
+              const isSelected = selectedAnswers.includes(opt);
+              return (
+                <div 
+                  key={idx}
+                  onClick={() => !feedback && handleAnswerSelect(opt)}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 flex items-center gap-3
+                    ${feedback ? 'opacity-80 cursor-not-allowed' : 'hover:border-blue-400 hover:bg-blue-50'}
+                    ${isSelected ? 'border-blue-500 bg-blue-100 shadow-md transform scale-[1.01]' : 'border-gray-200'}
+                  `}
+                >
+                  <div className={`w-6 h-6 rounded flex items-center justify-center border-2 
+                    ${q.type === 'MA' ? 'rounded-md' : 'rounded-full'}
+                    ${isSelected ? 'border-blue-500 bg-blue-500' : 'border-gray-400'}
+                  `}>
+                    {isSelected && <CheckCircle size={16} className="text-white" />}
+                  </div>
+                  <span className="text-lg font-medium text-gray-700">{opt}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {!feedback ? (
+            <button 
+              onClick={submitAnswer}
+              disabled={selectedAnswers.length === 0}
+              className={`w-full mt-8 py-4 rounded-xl font-bold text-xl transition-all shadow-lg
+                ${selectedAnswers.length > 0 
+                  ? 'bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 text-white transform hover:-translate-y-1' 
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
+              `}
+            >
+              Cek Jawaban!
+            </button>
+          ) : (
+            <div className={`mt-6 p-6 rounded-2xl animate-in zoom-in duration-300 ${feedback.isCorrect ? 'bg-green-100 border-2 border-green-400' : 'bg-red-100 border-2 border-red-400'}`}>
+              <div className="flex items-start gap-4">
+                {feedback.isCorrect ? (
+                  <CheckCircle size={40} className="text-green-600 flex-shrink-0" />
+                ) : (
+                  <XCircle size={40} className="text-red-600 flex-shrink-0" />
+                )}
+                <div>
+                  <h3 className={`text-xl font-bold mb-2 ${feedback.isCorrect ? 'text-green-700' : 'text-red-700'}`}>
+                    {feedback.isCorrect ? 'Wah, Jawabanmu Tepat Sekali! 🌟' : 'Tetap Semangat, Yuk Pelajari Lagi! 💪'}
+                  </h3>
+                  <p className="text-gray-700 text-lg leading-relaxed">{feedback.explanation}</p>
+                </div>
+              </div>
+              <button 
+                onClick={nextQuestion}
+                className={`w-full mt-4 py-3 rounded-xl font-bold text-white shadow-md flex items-center justify-center gap-2
+                  ${feedback.isCorrect ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+                `}
+              >
+                {currentIndex + 1 === quizData.length ? 'Selesai & Lihat Nilai' : 'Lanjut Soal Berikutnya'} <ArrowRight size={20} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCertificate = () => (
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 py-10 w-full animate-in zoom-in duration-700">
+      
+      {/* Action Buttons (Hide when printing) */}
+      <div className="mb-6 flex gap-4 print:hidden">
+        <button onClick={printReport} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 shadow-lg">
+          <Printer size={20}/> Cetak / PDF
+        </button>
+        <button onClick={resetQuiz} className="flex items-center gap-2 bg-gray-200 text-gray-800 px-6 py-2 rounded-lg font-bold hover:bg-gray-300 shadow-lg">
+          Main Lagi
+        </button>
+      </div>
+
+      {/* Certificate Container */}
+      <div 
+        id="certificate-print"
+        className="bg-white w-full max-w-4xl border-[16px] border-double border-yellow-400 p-8 sm:p-16 text-center relative shadow-2xl overflow-hidden"
+        style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23fef08a\' fill-opacity=\'0.2\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}
+      >
+        <div className="absolute top-10 left-10 text-yellow-500 opacity-20"><Award size={100} /></div>
+        <div className="absolute bottom-10 right-10 text-yellow-500 opacity-20"><Award size={100} /></div>
+
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-blue-800 mb-2 uppercase tracking-wider">
+          Sertifikat Penghargaan
+        </h1>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-600 mb-8">SD Negeri 3 Muara Rupit</h2>
+
+        <p className="text-lg text-gray-700 mb-2">Diberikan dengan bangga kepada:</p>
+        <h3 className="text-3xl sm:text-4xl font-bold text-pink-600 mb-2 underline decoration-wavy decoration-yellow-400">
+          {profile.name}
+        </h3>
+        <p className="text-xl font-bold text-gray-700 mb-8">Kelas {profile.studentClass.toUpperCase()}</p>
+
+        <p className="text-lg text-gray-700 mb-4 max-w-2xl mx-auto leading-relaxed">
+          Telah berhasil menyelesaikan kuis interaktif mata pelajaran <strong className="text-blue-600 uppercase">{subject}</strong> dengan penuh semangat dan antusiasme!
+        </p>
+
+        <div className="my-8 inline-block bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-full p-8 shadow-inner border-4 border-yellow-200">
+           <div className="bg-white rounded-full w-32 h-32 flex flex-col items-center justify-center shadow-lg">
+             <span className="text-sm font-bold text-gray-500">NILAI AKHIR</span>
+             <span className="text-5xl font-black text-blue-600">{score}</span>
+           </div>
+        </div>
+
+        <div className="mt-12 flex justify-between items-end px-4 sm:px-12 text-sm sm:text-base">
+          <div className="text-center">
+            <p className="mb-12 text-gray-700">Guru Kelas</p>
+            <p className="font-bold border-b border-gray-800 pb-1 inline-block min-w-[150px]">RASMILA BR GINTING</p>
+            <p className="text-xs text-gray-500 mt-1">NIP. 198804162025212082</p>
+          </div>
+          <div className="text-center">
+            <p className="mb-12 text-gray-700">Muara Rupit, {new Date(profile.date).toLocaleDateString('id-ID')}<br/>Kepala Sekolah</p>
+            <p className="font-bold border-b border-gray-800 pb-1 inline-block min-w-[150px]">CANDRA MELATI PUTRA, S.Pd.,M.Pd</p>
+            <p className="text-xs text-gray-500 mt-1">NIP. 199009212017081001</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMaterial = () => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 animate-in fade-in zoom-in duration-500">
+      <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl border-4 border-blue-300 max-w-2xl w-full text-center relative overflow-hidden">
+        <h2 className="text-3xl font-extrabold text-blue-600 mb-2">Ringkasan Materi Kelas 6</h2>
+        <h3 className="text-xl font-bold text-gray-600 mb-6 capitalize bg-yellow-100 inline-block px-4 py-1 rounded-full shadow-sm">
+          Mata Pelajaran: {subject}
+        </h3>
+        
+        <div className="text-left text-gray-700 space-y-4 text-base sm:text-lg mb-8 bg-blue-50 p-6 rounded-xl border-2 border-blue-200 shadow-inner">
+          {subject === 'matematika' ? (
+            <ul className="list-disc pl-5 space-y-3">
+              <li><strong>Operasi Hitung Bilangan & Pecahan:</strong> Mengingat kembali operasi campuran pada bilangan cacah, desimal, dan pecahan.</li>
+              <li><strong>Bangun Ruang (Geometri):</strong> Mempelajari sifat-sifat prisma, tabung, limas, kerucut, dan bola, serta cara menghitung volume dan luas permukaannya.</li>
+              <li><strong>Statistika Data:</strong> Membaca data, menyajikan dalam diagram (batang, lingkaran, garis), dan menentukan rata-rata (mean), median, serta modus.</li>
+            </ul>
+          ) : (
+            <ul className="list-disc pl-5 space-y-3">
+              <li><strong>Teks Eksplanasi & Pidato:</strong> Mengidentifikasi informasi penting dari teks ilmiah, dan membuat naskah pidato persuasif sederhana.</li>
+              <li><strong>Karya Sastra (Puisi & Cerita):</strong> Mengenal makna kiasan dalam puisi, serta menentukan unsur intrinsik (tokoh, latar, amanat) dalam cerita pendek.</li>
+              <li><strong>Tata Bahasa & Kosakata Baku:</strong> Penggunaan huruf kapital, kosakata baku sesuai EBI (Ejaan Bahasa Indonesia), dan penggunaan kalimat efektif pada formulir/surat resmi.</li>
+            </ul>
+          )}
+        </div>
+
+        <button 
+          onClick={beginQuiz}
+          className="w-full bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 text-white font-bold py-4 px-8 rounded-2xl shadow-lg transform transition hover:scale-105 text-2xl flex items-center justify-center gap-3"
+        >
+          Siap! Mulai Kuis 🚀
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderDashboard = () => (
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-8 animate-in fade-in">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">Dasbor Guru</h1>
+            <p className="text-gray-500">Rekapitulasi Nilai Siswa Real-time</p>
+          </div>
+          <button 
+            onClick={() => setCurrentView('landing')}
+            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 font-medium transition"
+          >
+            Kembali ke Beranda
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-8">
+          <div className="flex gap-4 mb-6 flex-wrap">
+            <button onClick={exportCSV} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition shadow-sm">
+              <Download size={18}/> Excel (CSV)
+            </button>
+            <button onClick={exportWord} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition shadow-sm">
+              <Download size={18}/> Word (.doc)
+            </button>
+            <button onClick={printReport} className="flex items-center gap-2 bg-gray-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-900 transition shadow-sm">
+              <Printer size={18}/> Cetak PDF
+            </button>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <table id="report-table" className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-100 text-gray-700 border-b-2 border-gray-200">
+                  <th className="p-4 font-bold">No</th>
+                  <th className="p-4 font-bold">Nama Siswa</th>
+                  <th className="p-4 font-bold">Kelas</th>
+                  <th className="p-4 font-bold">Mata Pelajaran</th>
+                  <th className="p-4 font-bold">Tanggal</th>
+                  <th className="p-4 font-bold text-center">Nilai Akhir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr><td colSpan="6" className="p-8 text-center text-gray-500">Belum ada data kuis yang diselesaikan.</td></tr>
+                ) : (
+                  records.map((r, i) => (
+                    <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                      <td className="p-4">{i + 1}</td>
+                      <td className="p-4 font-medium text-gray-800">{r.name}</td>
+                      <td className="p-4 uppercase">{r.class}</td>
+                      <td className="p-4 capitalize">{r.subject}</td>
+                      <td className="p-4">{r.date}</td>
+                      <td className="p-4 text-center font-bold text-blue-600">{r.score}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-pink-50 font-sans text-gray-900 selection:bg-blue-200 print:bg-white print:p-0">
+      
+      {/* Global Print Styles embedded */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          body * { visibility: hidden; }
+          #certificate-print, #certificate-print * { visibility: visible; }
+          #certificate-print { position: absolute; left: 0; top: 0; width: 100%; border: none !important; box-shadow: none !important; padding: 20px !important; }
+          
+          #report-table, #report-table * { visibility: visible; }
+          #report-table { position: absolute; left: 0; top: 0; width: 100%; border-collapse: collapse; }
+          #report-table th, #report-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        }
+      `}} />
+
+      {currentView === 'landing' && renderLanding()}
+      {currentView === 'teacher_login' && renderTeacherLogin()}
+      {currentView === 'material' && renderMaterial()}
+      {currentView === 'quiz' && renderQuiz()}
+      {currentView === 'certificate' && renderCertificate()}
+      {currentView === 'dashboard' && renderDashboard()}
+      
+    </div>
+  );
+}
