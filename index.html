@@ -81,16 +81,23 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:10px;bor
 </section>
 
 <section id="teacherLogin" class="card center hidden">
-  <h1 class="title">Dasbor Guru</h1><p>Masukkan PIN guru untuk melihat rekap nilai.</p>
-  <input id="teacherPin" type="password" placeholder="PIN guru" style="max-width:300px;text-align:center">
+  <h1 class="title">Dasbor Guru</h1><p>Masuk menggunakan akun guru Firebase.</p>
+  <div style="max-width:360px;margin:auto;text-align:left">
+    <label for="teacherEmail">Email guru</label><input id="teacherEmail" type="email" placeholder="Email yang didaftarkan di Firebase Authentication">
+    <label for="teacherPassword">Kata sandi</label><input id="teacherPassword" type="password" placeholder="Kata sandi akun guru">
+  </div>
   <p id="pinError" style="color:#c22"></p><div class="actions"><button class="primary" onclick="loginTeacher()">Masuk</button><button class="gray" onclick="goHome()">Kembali</button></div>
 </section>
 
 <section id="dashboard" class="card hidden">
   <div class="topbar"><div><h1 class="title">Dasbor Guru</h1><p>Rekapitulasi nilai pada perangkat ini</p></div><button class="gray" onclick="goHome()">Kembali ke Beranda</button></div>
   <div class="actions no-print" style="justify-content:flex-start"><button class="green" onclick="exportCSV()">Unduh Excel (CSV)</button><button class="primary" onclick="exportWord()">Unduh Word (.doc)</button><button class="gray" onclick="window.print()">Cetak / PDF</button><button class="gold" onclick="clearRecords()">Hapus seluruh rekap</button></div>
+  <div class="row no-print" style="max-width:520px;margin:16px 0">
+    <div><label for="filterDate">Filter tanggal pengerjaan</label><input id="filterDate" type="date" onchange="renderDashboard()"></div>
+    <div style="display:flex;align-items:end"><button class="gray" style="width:100%" onclick="document.getElementById('filterDate').value='';renderDashboard()">Tampilkan Semua Tanggal</button></div>
+  </div>
   <p id="recordCount"></p><div class="tablewrap"><table id="reportTable"><thead><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr></thead><tbody id="recordRows"></tbody></table></div>
-  <p class="small">Catatan: penyimpanan versi ini menggunakan localStorage pada browser/perangkat yang sama. Untuk rekap lintas perangkat secara real-time diperlukan konfigurasi Firebase milik sekolah.</p>
+  <p class="small">Data ditampilkan dari Cloud Firestore. Siswa mengirim hasil melalui koneksi internet; guru masuk menggunakan akun Firebase Authentication. Ekspor mengikuti filter tanggal yang dipilih.</p>
 </section>
 </main>
 <script>
@@ -120,8 +127,8 @@ function chooseSubject(s){
  const name=$('studentName').value.trim(),date=$('workDate').value;
  if(!name||!date){alert('Harap isi nama lengkap dan tanggal pengerjaan terlebih dahulu.');return}
  profile={name,studentClass:$('studentClass').value,date};subject=s;
- const old=records.some(r=>r.name.toLowerCase()===name.toLowerCase()&&r.class===profile.studentClass&&r.date===date&&r.subject===s);
- if(old&&!confirm('Nama ini sudah memiliki hasil untuk mata pelajaran dan tanggal tersebut pada browser ini. Tetap lanjut mengerjakan?'))return;
+ const old=records.some(r=>r.name.trim().toLowerCase()===name.toLowerCase()&&r.class===profile.studentClass&&r.date===date&&r.subject===s);
+ if(old){alert('Pengerjaan ditolak. Siswa ini sudah menyelesaikan kuis '+s+' pada tanggal '+date+'. Setiap siswa hanya mendapat satu kesempatan untuk mata pelajaran yang sama pada tanggal tersebut.');return;}
  $('materialSubject').textContent=s.toUpperCase();
  $('materialText').innerHTML=s==='matematika'
  ?'<ul><li><b>Operasi hitung bilangan dan pecahan:</b> operasi campuran pada bilangan cacah, desimal, dan pecahan.</li><li><b>Bangun ruang:</b> sifat prisma, tabung, limas, kerucut, dan bola serta volume.</li><li><b>Statistika:</b> membaca diagram dan menentukan mean, median, serta modus.</li></ul>'
@@ -159,24 +166,198 @@ function submitAnswer(){
  if('speechSynthesis'in window)speechSynthesis.cancel();
 }
 function nextQuestion(){if(index<49){index++;renderQuestion()}else finishQuiz()}
-function finishQuiz(){
- const rec={name:profile.name,class:profile.studentClass,date:profile.date,subject,score};
- records=JSON.parse(localStorage.getItem('sd3QuizRecords')||'[]');records.push(rec);localStorage.setItem('sd3QuizRecords',JSON.stringify(records));
- $('certName').textContent=profile.name;$('certClass').textContent='Kelas '+profile.studentClass;$('certSubject').textContent=subject.toUpperCase();$('certScore').textContent=score;$('certDate').innerHTML='Muara Rupit, '+new Date(profile.date+'T00:00:00').toLocaleDateString('id-ID')+'<div style="margin-top:4px">Kepala Sekolah</div><div class="line">CANDRA MELATI PUTRA, S.Pd., M.Pd.</div>';
- show('certificateView');
+async function finishQuiz(){
+ const rec={name:profile.name.trim(),class:profile.studentClass,date:profile.date,subject,score};
+ try{
+   if(typeof window.firebaseSaveResult!=='function') throw new Error('Firebase belum tersambung. Periksa konfigurasi dan koneksi internet.');
+   await window.firebaseSaveResult(rec);
+   $('certName').textContent=profile.name;$('certClass').textContent='Kelas '+profile.studentClass;$('certSubject').textContent=subject.toUpperCase();$('certScore').textContent=score;$('certDate').innerHTML='Muara Rupit, '+new Date(profile.date+'T00:00:00').toLocaleDateString('id-ID')+'<div style="margin-top:4px">Kepala Sekolah</div><div class="line">CANDRA MELATI PUTRA, S.Pd., M.Pd.</div>';
+   show('certificateView');
+ }catch(err){
+   alert('Nilai belum berhasil disimpan ke database. '+(err.message||'Periksa internet atau hubungi guru.'));
+   console.error(err);
+   goHome();
+ }
 }
 function toggleVoice(){voiceOn=!voiceOn;$('voiceBtn').textContent=voiceOn?'🔊 Narasi ON':'🔇 Narasi OFF';if(!voiceOn&&'speechSynthesis'in window)speechSynthesis.cancel();else readQuestion()}
 function toggleEffects(){effectsOn=!effectsOn;$('effectBtn').textContent=effectsOn?'🎵 Efek ON':'🔕 Efek OFF'}
 function readQuestion(){if(!voiceOn||!('speechSynthesis'in window)||!questions.length)return;speechSynthesis.cancel();let q=questions[index],u=new SpeechSynthesisUtterance(q.text+'. Pilihan jawaban: '+q.options.join('. '));u.lang='id-ID';speechSynthesis.speak(u)}
 function beep(ok){try{let c=new(window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=ok?600:220;g.gain.value=.08;o.start();o.stop(c.currentTime+.18)}catch(e){}}
 function showTeacherLogin(){show('teacherLogin')}
-function loginTeacher(){if($('teacherPin').value==='guruhebat'){renderDashboard();show('dashboard')}else $('pinError').textContent='PIN salah. Akses khusus guru.'}
-function renderDashboard(){records=JSON.parse(localStorage.getItem('sd3QuizRecords')||'[]');$('recordCount').textContent='Jumlah hasil tersimpan: '+records.length;$('recordRows').innerHTML=records.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${r.class}</td><td>${r.subject}</td><td>${r.date}</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center">Belum ada hasil kuis.</td></tr>'}
+async function loginTeacher(){
+ const email=$('teacherEmail').value.trim(),password=$('teacherPassword').value;
+ $('pinError').textContent='';
+ try{
+   if(typeof window.firebaseTeacherLogin!=='function') throw new Error('Firebase Authentication belum siap.');
+   await window.firebaseTeacherLogin(email,password);
+   await renderDashboard();
+   show('dashboard');
+ }catch(err){$('pinError').textContent='Login gagal: '+(err.message||'periksa email dan kata sandi.');}
+}
+async function renderDashboard(){
+ try{
+   if(typeof window.firebaseLoadResults!=='function') throw new Error('Firebase belum tersambung.');
+   records=await window.firebaseLoadResults();
+   records.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.completedAt||'').localeCompare(a.completedAt||''));
+   const chosenDate=$('filterDate')?$('filterDate').value:'';
+   const visible=chosenDate?records.filter(r=>r.date===chosenDate):records;
+   $('recordCount').textContent=`Jumlah hasil: ${visible.length} siswa${chosenDate?' pada tanggal '+chosenDate:' dari seluruh tanggal'}.`;
+   $('recordRows').innerHTML=visible.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center">Belum ada hasil kuis untuk tanggal ini.</td></tr>';
+ }catch(err){$('recordCount').textContent='Gagal memuat rekap: '+(err.message||'periksa koneksi dan aturan Firestore.');$('recordRows').innerHTML='';}
+}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function exportCSV(){records=JSON.parse(localStorage.getItem('sd3QuizRecords')||'[]');let rows=[['No','Nama','Kelas','Mata Pelajaran','Tanggal','Nilai'],...records.map((r,i)=>[i+1,r.name,r.class,r.subject,r.date,r.score])];let csv='\ufeff'+rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\n');download(new Blob([csv],{type:'text/csv;charset=utf-8'}),'Rekap_Nilai_SD_Negeri_3_Muara_Rupit.csv')}
-function exportWord(){let table=$('reportTable').outerHTML,doc=`<html><head><meta charset="utf-8"></head><body><h2>Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2>${table}</body></html>`;download(new Blob(['\ufeff',doc],{type:'application/msword'}),'Rekap_Nilai_SD3_Muara_Rupit.doc')}
+async function exportCSV(){
+ try{
+  records=await window.firebaseLoadResults();
+  records.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.completedAt||'').localeCompare(a.completedAt||''));
+  const d=$('filterDate')?$('filterDate').value:'';
+  if(d)records=records.filter(r=>r.date===d);
+  let rows=[['No','Nama','Kelas','Mata Pelajaran','Tanggal','Nilai'],...records.map((r,i)=>[i+1,r.name,r.class,r.subject,r.date,r.score])];
+  let csv='\ufeff'+rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\n');
+  download(new Blob([csv],{type:'text/csv;charset=utf-8'}),'Rekap_Nilai_SD_Negeri_3_Muara_Rupit.csv');
+ }catch(err){alert('Tidak dapat mengunduh rekap: '+(err.message||''));}
+}
+async function exportWord(){
+ try{
+  records=await window.firebaseLoadResults();
+  const d=$('filterDate')?$('filterDate').value:'';
+  if(d)records=records.filter(r=>r.date===d);
+  const rows=records.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td>${r.score}</td></tr>`).join('');
+  let doc=`<html><head><meta charset="utf-8"></head><body><h2>Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2><table border="1"><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr>${rows}</table>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+import { getFirestore, collection, doc, getDocs, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAj41moqXmRXc5U_P-wsEKD4GWavudXlFY",
+  authDomain: "tka-sd3-muara-rupit.firebaseapp.com",
+  projectId: "tka-sd3-muara-rupit",
+  storageBucket: "tka-sd3-muara-rupit.firebasestorage.app",
+  messagingSenderId: "890234606842",
+  appId: "1:890234606842:web:3777f2e475a65e3556a543",
+  measurementId: "G-P2RFWZ76T4"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Siswa menggunakan autentikasi anonim; email/password khusus akun guru.
+const studentAuthReady = signInAnonymously(auth);
+
+function makeAttemptId(r){
+  const norm = s => encodeURIComponent(String(s).trim().toLocaleLowerCase('id-ID'));
+  return [r.date, r.class, norm(r.subject), norm(r.name)].join("__");
+}
+
+window.firebaseSaveResult = async function(r){
+  if(auth.currentUser && !auth.currentUser.isAnonymous) await signOut(auth);
+  if(!auth.currentUser) await signInAnonymously(auth);
+  const id = makeAttemptId(r);
+  const ref = doc(db, "hasil_kuis", id);
+  // Rules Firestore hanya mengizinkan CREATE, bukan UPDATE. Jika ID ini sudah ada,
+  // pengiriman kedua otomatis ditolak oleh server.
+  try {
+  await setDoc(ref, {
+    name: String(r.name).trim(),
+    class: r.class,
+    date: r.date,
+    subject: r.subject,
+    score: Number(r.score),
+    completedAt: new Date().toISOString(),
+    createdAt: serverTimestamp()
+  });
+  } catch(err) {
+    if(err.code === "permission-denied") throw new Error("Hasil ini mungkin sudah pernah dikirim, atau aturan keamanan Firestore belum dipasang dengan benar.");
+    throw err;
+  }
+};
+
+window.firebaseTeacherLogin = async function(email,password){
+  if(!email || !password) throw new Error("Isi email dan kata sandi guru.");
+  await signInWithEmailAndPassword(auth,email,password);
+};
+
+window.firebaseLoadResults = async function(){
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous) throw new Error("Silakan masuk sebagai guru terlebih dahulu.");
+  const snap = await getDocs(collection(db,"hasil_kuis"));
+  return snap.docs.map(d => ({id:d.id,...d.data()}));
+};
+</script>
+
+</body></html>`;
+  download(new Blob(['\ufeff',doc],{type:'application/msword'}),'Rekap_Nilai_SD3_Muara_Rupit.doc');
+ }catch(err){alert('Tidak dapat mengunduh rekap: '+(err.message||''));}
+}
+function clearRecords(){alert('Penghapusan data cloud dinonaktifkan untuk melindungi rekap nilai. Hubungi administrator Firebase jika perlu menghapus data.')}
 function download(blob,name){let a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 function clearRecords(){if(confirm('Yakin menghapus seluruh rekap nilai pada browser ini?')){localStorage.removeItem('sd3QuizRecords');renderDashboard()}}
 $('workDate').value=new Date().toISOString().slice(0,10);
 </script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+import { getFirestore, collection, doc, getDocs, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAj41moqXmRXc5U_P-wsEKD4GWavudXlFY",
+  authDomain: "tka-sd3-muara-rupit.firebaseapp.com",
+  projectId: "tka-sd3-muara-rupit",
+  storageBucket: "tka-sd3-muara-rupit.firebasestorage.app",
+  messagingSenderId: "890234606842",
+  appId: "1:890234606842:web:3777f2e475a65e3556a543",
+  measurementId: "G-P2RFWZ76T4"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Siswa menggunakan autentikasi anonim; email/password khusus akun guru.
+const studentAuthReady = signInAnonymously(auth);
+
+function makeAttemptId(r){
+  const norm = s => encodeURIComponent(String(s).trim().toLocaleLowerCase('id-ID'));
+  return [r.date, r.class, norm(r.subject), norm(r.name)].join("__");
+}
+
+window.firebaseSaveResult = async function(r){
+  if(auth.currentUser && !auth.currentUser.isAnonymous) await signOut(auth);
+  if(!auth.currentUser) await signInAnonymously(auth);
+  const id = makeAttemptId(r);
+  const ref = doc(db, "hasil_kuis", id);
+  // Rules Firestore hanya mengizinkan CREATE, bukan UPDATE. Jika ID ini sudah ada,
+  // pengiriman kedua otomatis ditolak oleh server.
+  try {
+  await setDoc(ref, {
+    name: String(r.name).trim(),
+    class: r.class,
+    date: r.date,
+    subject: r.subject,
+    score: Number(r.score),
+    completedAt: new Date().toISOString(),
+    createdAt: serverTimestamp()
+  });
+  } catch(err) {
+    if(err.code === "permission-denied") throw new Error("Hasil ini mungkin sudah pernah dikirim, atau aturan keamanan Firestore belum dipasang dengan benar.");
+    throw err;
+  }
+};
+
+window.firebaseTeacherLogin = async function(email,password){
+  if(!email || !password) throw new Error("Isi email dan kata sandi guru.");
+  await signInWithEmailAndPassword(auth,email,password);
+};
+
+window.firebaseLoadResults = async function(){
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous) throw new Error("Silakan masuk sebagai guru terlebih dahulu.");
+  const snap = await getDocs(collection(db,"hasil_kuis"));
+  return snap.docs.map(d => ({id:d.id,...d.data()}));
+};
+</script>
+
 </body></html>
