@@ -36,7 +36,7 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:10px;bor
       <div><label for="workDate">Tanggal pengerjaan</label><input id="workDate" type="date"></div>
     </div>
   </div>
-  <div class="note" style="text-align:left"><b>📌 Petunjuk pengerjaan</b><br>• Isi nama, kelas, dan tanggal.<br>• Setiap mata pelajaran terdiri atas 50 soal.<br>• Bentuk soal: pilihan ganda, benar/salah, dan pilihan lebih dari satu.<br>• Nilai maksimal 100. Hasil tersimpan pada browser/perangkat ini.</div>
+  <div class="note" style="text-align:left"><b>📌 Petunjuk pengerjaan</b><br>• Isi nama, kelas, dan tanggal.<br>• Setiap mata pelajaran terdiri atas 50 soal.<br>• Bentuk soal: pilihan ganda, benar/salah, dan pilihan lebih dari satu.<br>• Nilai maksimal 100. Hasil dikirim ke database sekolah setelah kuis selesai.</div>
   <p><b>Pilih mata pelajaran</b></p>
   <div class="actions">
     <button class="pink" onclick="chooseSubject('bahasa indonesia')">📖 TKA Bahasa Indonesia</button>
@@ -90,14 +90,14 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:10px;bor
 </section>
 
 <section id="dashboard" class="card hidden">
-  <div class="topbar"><div><h1 class="title">Dasbor Guru</h1><p>Rekapitulasi nilai pada perangkat ini</p></div><button class="gray" onclick="goHome()">Kembali ke Beranda</button></div>
+  <div class="topbar"><div><h1 class="title">Dasbor Guru</h1><p>Rekapitulasi nilai dari database sekolah</p></div><button class="gray" onclick="goHome()">Kembali ke Beranda</button></div>
   <div class="actions no-print" style="justify-content:flex-start"><button class="green" onclick="exportCSV()">Unduh Excel (CSV)</button><button class="primary" onclick="exportWord()">Unduh Word (.doc)</button><button class="gray" onclick="window.print()">Cetak / PDF</button><button class="gold" onclick="clearRecords()">Hapus seluruh rekap</button></div>
   <div class="row no-print" style="max-width:520px;margin:16px 0">
     <div><label for="filterDate">Filter tanggal pengerjaan</label><input id="filterDate" type="date" onchange="renderDashboard()"></div>
     <div style="display:flex;align-items:end"><button class="gray" style="width:100%" onclick="document.getElementById('filterDate').value='';renderDashboard()">Tampilkan Semua Tanggal</button></div>
   </div>
   <p id="recordCount"></p><div class="tablewrap"><table id="reportTable"><thead><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr></thead><tbody id="recordRows"></tbody></table></div>
-  <p class="small">Data ditampilkan dari Cloud Firestore. Siswa mengirim hasil melalui koneksi internet; guru masuk menggunakan akun Firebase Authentication. Ekspor mengikuti filter tanggal yang dipilih.</p>
+  <p class="small">Data ditampilkan dari Cloud Firestore. Siswa mengirim hasil melalui koneksi internet; guru masuk menggunakan akun Firebase Authentication. Ekspor mengikuti filter tanggal yang dipilih. Gunakan identitas siswa yang konsisten saat mengisi nama, kelas, tanggal, dan mata pelajaran.</p>
 </section>
 </main>
 <script>
@@ -167,7 +167,7 @@ function submitAnswer(){
 }
 function nextQuestion(){if(index<49){index++;renderQuestion()}else finishQuiz()}
 async function finishQuiz(){
- const rec={name:profile.name.trim(),class:profile.studentClass,date:profile.date,subject,score};
+ const rec={name:profile.name.trim(),class:profile.studentClass==='6A'?'VI A':'VI B',date:profile.date,subject,score};
  try{
    if(typeof window.firebaseSaveResult!=='function') throw new Error('Firebase belum tersambung. Periksa konfigurasi dan koneksi internet.');
    await window.firebaseSaveResult(rec);
@@ -202,7 +202,7 @@ async function renderDashboard(){
    const chosenDate=$('filterDate')?$('filterDate').value:'';
    const visible=chosenDate?records.filter(r=>r.date===chosenDate):records;
    $('recordCount').textContent=`Jumlah hasil: ${visible.length} siswa${chosenDate?' pada tanggal '+chosenDate:' dari seluruh tanggal'}.`;
-   $('recordRows').innerHTML=visible.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center">Belum ada hasil kuis untuk tanggal ini.</td></tr>';
+   $('recordRows').innerHTML=visible.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class==='6A'?'VI A':r.class==='6B'?'VI B':r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center">Belum ada hasil kuis untuk tanggal ini.</td></tr>';
  }catch(err){$('recordCount').textContent='Gagal memuat rekap: '+(err.message||'periksa koneksi dan aturan Firestore.');$('recordRows').innerHTML='';}
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -212,7 +212,7 @@ async function exportCSV(){
   records.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.completedAt||'').localeCompare(a.completedAt||''));
   const d=$('filterDate')?$('filterDate').value:'';
   if(d)records=records.filter(r=>r.date===d);
-  let rows=[['No','Nama','Kelas','Mata Pelajaran','Tanggal','Nilai'],...records.map((r,i)=>[i+1,r.name,r.class,r.subject,r.date,r.score])];
+  let rows=[['No','Nama','Kelas','Mata Pelajaran','Tanggal','Nilai'],...records.map((r,i)=>[i+1,r.name,r.class==='6A'?'VI A':r.class==='6B'?'VI B':r.class,r.subject,r.date,r.score])];
   let csv='\ufeff'+rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\n');
   download(new Blob([csv],{type:'text/csv;charset=utf-8'}),'Rekap_Nilai_SD_Negeri_3_Muara_Rupit.csv');
  }catch(err){alert('Tidak dapat mengunduh rekap: '+(err.message||''));}
@@ -222,78 +222,13 @@ async function exportWord(){
   records=await window.firebaseLoadResults();
   const d=$('filterDate')?$('filterDate').value:'';
   if(d)records=records.filter(r=>r.date===d);
-  const rows=records.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td>${r.score}</td></tr>`).join('');
-  let doc=`<html><head><meta charset="utf-8"></head><body><h2>Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2><table border="1"><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr>${rows}</table>
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDocs, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAj41moqXmRXc5U_P-wsEKD4GWavudXlFY",
-  authDomain: "tka-sd3-muara-rupit.firebaseapp.com",
-  projectId: "tka-sd3-muara-rupit",
-  storageBucket: "tka-sd3-muara-rupit.firebasestorage.app",
-  messagingSenderId: "890234606842",
-  appId: "1:890234606842:web:3777f2e475a65e3556a543",
-  measurementId: "G-P2RFWZ76T4"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-// Siswa menggunakan autentikasi anonim; email/password khusus akun guru.
-const studentAuthReady = signInAnonymously(auth);
-
-function makeAttemptId(r){
-  const norm = s => encodeURIComponent(String(s).trim().toLocaleLowerCase('id-ID'));
-  return [r.date, r.class, norm(r.subject), norm(r.name)].join("__");
-}
-
-window.firebaseSaveResult = async function(r){
-  if(auth.currentUser && !auth.currentUser.isAnonymous) await signOut(auth);
-  if(!auth.currentUser) await signInAnonymously(auth);
-  const id = makeAttemptId(r);
-  const ref = doc(db, "hasil_kuis", id);
-  // Rules Firestore hanya mengizinkan CREATE, bukan UPDATE. Jika ID ini sudah ada,
-  // pengiriman kedua otomatis ditolak oleh server.
-  try {
-  await setDoc(ref, {
-    name: String(r.name).trim(),
-    class: r.class,
-    date: r.date,
-    subject: r.subject,
-    score: Number(r.score),
-    completedAt: new Date().toISOString(),
-    createdAt: serverTimestamp()
-  });
-  } catch(err) {
-    if(err.code === "permission-denied") throw new Error("Hasil ini mungkin sudah pernah dikirim, atau aturan keamanan Firestore belum dipasang dengan benar.");
-    throw err;
-  }
-};
-
-window.firebaseTeacherLogin = async function(email,password){
-  if(!email || !password) throw new Error("Isi email dan kata sandi guru.");
-  await signInWithEmailAndPassword(auth,email,password);
-};
-
-window.firebaseLoadResults = async function(){
-  const user = auth.currentUser;
-  if(!user || user.isAnonymous) throw new Error("Silakan masuk sebagai guru terlebih dahulu.");
-  const snap = await getDocs(collection(db,"hasil_kuis"));
-  return snap.docs.map(d => ({id:d.id,...d.data()}));
-};
-</script>
-
-</body></html>`;
-  download(new Blob(['\ufeff',doc],{type:'application/msword'}),'Rekap_Nilai_SD3_Muara_Rupit.doc');
+  const rows=records.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class==='6A'?'VI A':r.class==='6B'?'VI B':r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td>${r.score}</td></tr>`).join('');
+  const docHtml=`<!doctype html><html><head><meta charset="utf-8"></head><body><h2>Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2><table border="1"><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr>${rows}</table></body></html>`;
+  download(new Blob(['\ufeff',docHtml],{type:'application/msword'}),'Rekap_Nilai_SD3_Muara_Rupit.doc');
  }catch(err){alert('Tidak dapat mengunduh rekap: '+(err.message||''));}
 }
 function clearRecords(){alert('Penghapusan data cloud dinonaktifkan untuk melindungi rekap nilai. Hubungi administrator Firebase jika perlu menghapus data.')}
 function download(blob,name){let a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
-function clearRecords(){if(confirm('Yakin menghapus seluruh rekap nilai pada browser ini?')){localStorage.removeItem('sd3QuizRecords');renderDashboard()}}
 $('workDate').value=new Date().toISOString().slice(0,10);
 </script>
 
@@ -316,8 +251,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Siswa menggunakan autentikasi anonim; email/password khusus akun guru.
-const studentAuthReady = signInAnonymously(auth);
+// Siswa masuk anonim saat mengirim hasil; akun email/password digunakan guru.
 
 function makeAttemptId(r){
   const norm = s => encodeURIComponent(String(s).trim().toLocaleLowerCase('id-ID'));
@@ -326,7 +260,7 @@ function makeAttemptId(r){
 
 window.firebaseSaveResult = async function(r){
   if(auth.currentUser && !auth.currentUser.isAnonymous) await signOut(auth);
-  if(!auth.currentUser) await signInAnonymously(auth);
+  if(!auth.currentUser || !auth.currentUser.isAnonymous) await signInAnonymously(auth);
   const id = makeAttemptId(r);
   const ref = doc(db, "hasil_kuis", id);
   // Rules Firestore hanya mengizinkan CREATE, bukan UPDATE. Jika ID ini sudah ada,
