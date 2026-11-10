@@ -21,6 +21,7 @@ label{display:block;font-weight:700;margin:12px 0 6px}input,select{width:100%;pa
 table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:10px;border:1px solid #d8e0e9;text-align:left}th{background:#eaf2fb} .tablewrap{overflow:auto;border-radius:12px}
 @media(max-width:600px){.row{grid-template-columns:1fr}.question{font-size:20px}.signatures{flex-direction:column}.signatures>div{margin-top:12px}}
 @media print{body{background:#fff}.no-print{display:none!important}.wrap{width:100%;margin:0}.card{box-shadow:none;border:0}.certificate{border:8px double #d9ad27}}
+.danger{background:#b42318;color:#fff}
 </style>
 </head>
 <body>
@@ -91,12 +92,12 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:10px;bor
 
 <section id="dashboard" class="card hidden">
   <div class="topbar"><div><h1 class="title">Dasbor Guru</h1><p>Rekapitulasi nilai dari database sekolah</p></div><button class="gray" onclick="goHome()">Kembali ke Beranda</button></div>
-  <div class="actions no-print" style="justify-content:flex-start"><button class="green" onclick="exportCSV()">Unduh Excel (CSV)</button><button class="primary" onclick="exportWord()">Unduh Word (.doc)</button><button class="gray" onclick="window.print()">Cetak / PDF</button><button class="gold" onclick="clearRecords()">Hapus seluruh rekap</button></div>
+  <div class="actions no-print" style="justify-content:flex-start"><button class="green" onclick="exportCSV()">Unduh Excel (CSV)</button><button class="primary" onclick="exportWord()">Unduh Word (.doc)</button><button class="gray" onclick="window.print()">Cetak / PDF</button><button class="gold" onclick="clearRecords()">Hapus seluruh rekap</button><button class="danger" onclick="deleteSelectedRecords()">Hapus siswa terpilih</button></div>
   <div class="row no-print" style="max-width:520px;margin:16px 0">
     <div><label for="filterDate">Filter tanggal pengerjaan</label><input id="filterDate" type="date" onchange="renderDashboard()"></div>
     <div style="display:flex;align-items:end"><button class="gray" style="width:100%" onclick="document.getElementById('filterDate').value='';renderDashboard()">Tampilkan Semua Tanggal</button></div>
   </div>
-  <p id="recordCount"></p><div class="tablewrap"><table id="reportTable"><thead><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr></thead><tbody id="recordRows"></tbody></table></div>
+  <p id="recordCount"></p><div class="tablewrap"><table id="reportTable"><thead><tr><th><input type="checkbox" id="selectAllRecords" onchange="toggleSelectAll(this.checked)" aria-label="Pilih semua"></th><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr></thead><tbody id="recordRows"></tbody></table></div>
   <p class="small">Data ditampilkan dari Cloud Firestore. Siswa mengirim hasil melalui koneksi internet; guru masuk menggunakan akun Firebase Authentication. Ekspor mengikuti filter tanggal yang dipilih. Gunakan identitas siswa yang konsisten saat mengisi nama, kelas, tanggal, dan mata pelajaran.</p>
 </section>
 </main>
@@ -246,7 +247,8 @@ async function renderDashboard(){
    const chosenDate=$('filterDate')?$('filterDate').value:'';
    const visible=chosenDate?records.filter(r=>r.date===chosenDate):records;
    $('recordCount').textContent=`Jumlah hasil: ${visible.length} siswa${chosenDate?' pada tanggal '+chosenDate:' dari seluruh tanggal'}.`;
-   $('recordRows').innerHTML=visible.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class==='6A'?'VI A':r.class==='6B'?'VI B':r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center">Belum ada hasil kuis untuk tanggal ini.</td></tr>';
+   $('recordRows').innerHTML=visible.map((r,i)=>`<tr><td><input type="checkbox" class="record-check" value="${escapeHtml(r.id)}" aria-label="Pilih ${escapeHtml(r.name)}"></td><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class==='6A'?'VI A':r.class==='6B'?'VI B':r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="7" style="text-align:center">Belum ada hasil kuis untuk tanggal ini.</td></tr>';
+   if($('selectAllRecords')) $('selectAllRecords').checked=false;
  }catch(err){$('recordCount').textContent='Gagal memuat rekap: '+(err.message||'periksa koneksi dan aturan Firestore.');$('recordRows').innerHTML='';}
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -267,11 +269,24 @@ async function exportWord(){
   const d=$('filterDate')?$('filterDate').value:'';
   if(d)records=records.filter(r=>r.date===d);
   const rows=records.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.class==='6A'?'VI A':r.class==='6B'?'VI B':r.class)}</td><td>${escapeHtml(r.subject)}</td><td>${escapeHtml(r.date)}</td><td>${r.score}</td></tr>`).join('');
-  const docHtml=`<!doctype html><html><head><meta charset="utf-8"></head><body><h2>Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2><table border="1"><tr><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr>${rows}</table></body></html>`;
+  const docHtml=`<!doctype html><html><head><meta charset="utf-8"></head><body><h2>Rekapitulasi Nilai Siswa SD Negeri 3 Muara Rupit</h2><table border="1"><tr><th><input type="checkbox" id="selectAllRecords" onchange="toggleSelectAll(this.checked)" aria-label="Pilih semua"></th><th>No</th><th>Nama</th><th>Kelas</th><th>Mata Pelajaran</th><th>Tanggal</th><th>Nilai</th></tr>${rows}</table></body></html>`;
   download(new Blob(['\ufeff',docHtml],{type:'application/msword'}),'Rekap_Nilai_SD3_Muara_Rupit.doc');
  }catch(err){alert('Tidak dapat mengunduh rekap: '+(err.message||''));}
 }
-function clearRecords(){alert('Penghapusan data cloud dinonaktifkan untuk melindungi rekap nilai. Hubungi administrator Firebase jika perlu menghapus data.')}
+function toggleSelectAll(checked){document.querySelectorAll('.record-check').forEach(el=>el.checked=checked)}
+async function deleteSelectedRecords(){
+ const ids=[...document.querySelectorAll('.record-check:checked')].map(el=>el.value);
+ if(!ids.length){alert('Pilih minimal satu hasil siswa terlebih dahulu.');return;}
+ if(!confirm(`Hapus ${ids.length} hasil kuis yang dipilih? Data yang dihapus tidak dapat dikembalikan.`))return;
+ try{await window.firebaseDeleteResults(ids);alert(`${ids.length} hasil kuis berhasil dihapus.`);await renderDashboard();}
+ catch(err){alert('Gagal menghapus data: '+(err.message||'Periksa aturan Firestore.'));}
+}
+async function clearRecords(){
+ if(!confirm('PERINGATAN: Hapus SELURUH rekap nilai siswa dari semua tanggal dan mata pelajaran? Tindakan ini tidak dapat dibatalkan.'))return;
+ if(!confirm('Konfirmasi terakhir: seluruh data nilai akan dihapus permanen. Lanjutkan?'))return;
+ try{const ids=records.map(r=>r.id).filter(Boolean);if(!ids.length){alert('Tidak ada data untuk dihapus.');return;}await window.firebaseDeleteResults(ids);alert('Seluruh rekap berhasil dihapus.');await renderDashboard();}
+ catch(err){alert('Gagal menghapus seluruh rekap: '+(err.message||'Periksa aturan Firestore.'));}
+}
 function download(blob,name){let a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 $('workDate').value=new Date().toISOString().slice(0,10);
 </script>
@@ -279,7 +294,7 @@ $('workDate').value=new Date().toISOString().slice(0,10);
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
 import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDocs, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDocs, setDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAj41moqXmRXc5U_P-wsEKD4GWavudXlFY",
@@ -328,6 +343,12 @@ window.firebaseSaveResult = async function(r){
 window.firebaseTeacherLogin = async function(email,password){
   if(!email || !password) throw new Error("Isi email dan kata sandi guru.");
   await signInWithEmailAndPassword(auth,email,password);
+};
+
+window.firebaseDeleteResults = async function(ids){
+  const user = auth.currentUser;
+  if(!user || user.isAnonymous || user.uid !== "vKU5nqpJLJQQFJ0ytTpWHDG1l613") throw new Error("Akun ini tidak memiliki izin menghapus data.");
+  for(const id of ids){ await deleteDoc(doc(db,"hasil_kuis",id)); }
 };
 
 window.firebaseLoadResults = async function(){
