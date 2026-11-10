@@ -152,20 +152,64 @@ function makeQuestions(base,s){
 }
 function beginQuiz(){questions=makeQuestions(subject==='matematika'?mathBase:indoBase,subject);index=0;score=0;selected=[];feedback=null;$('studentLabel').textContent=profile.name+' • Kelas '+profile.studentClass;show('quiz');renderQuestion()}
 function renderQuestion(){
- const q=questions[index];$('progress').textContent=`Soal ${index+1} / 50`;$('questionText').textContent=q.text;$('options').innerHTML='';$('feedback').innerHTML='';$('submitBtn').classList.remove('hidden');$('submitBtn').disabled=true;$('nextBtn').classList.add('hidden');selected=[];
- q.options.forEach((o,i)=>{let b=document.createElement('button');b.className='option';b.innerHTML=`<span>${q.type==='MA'?'☐':'◯'}</span><span>${o}</span>`;b.onclick=()=>selectOption(o,b);$('options').appendChild(b)});
+ const q=questions[index];
+ $('progress').textContent=`Soal ${index+1} / 50`;
+ $('questionText').textContent=q.text;
+ $('options').innerHTML='';
+ $('feedback').innerHTML='';
+ $('submitBtn').classList.remove('hidden');
+ $('submitBtn').disabled=true;
+ $('nextBtn').classList.add('hidden');
+ $('nextBtn').disabled=false;
+ selected=[];
+ q.options.forEach((o)=>{
+   const b=document.createElement('button');
+   b.type='button';
+   b.className='option';
+   const marker=document.createElement('span');
+   marker.textContent=q.type==='MA'?'☐':'◯';
+   const label=document.createElement('span');
+   label.textContent=o;
+   b.append(marker,label);
+   b.addEventListener('click',()=>selectOption(o,b));
+   $('options').appendChild(b);
+ });
  if(voiceOn)setTimeout(readQuestion,350);
 }
-function selectOption(o,b){if(feedback)return;let q=questions[index];if(q.type==='MA'){selected.includes(o)?selected=selected.filter(x=>x!==o):selected.push(o)}else selected=[o];[...$('options').children].forEach(el=>{let txt=el.lastElementChild.textContent;el.classList.toggle('selected',selected.includes(txt));el.firstElementChild.textContent=selected.includes(txt)?'✓':(q.type==='MA'?'☐':'◯')});$('submitBtn').disabled=selected.length===0}
+function selectOption(o,b){
+ if(feedback)return;
+ const q=questions[index];
+ if(q.type==='MA'){
+   selected.includes(o)?selected=selected.filter(x=>x!==o):selected.push(o);
+ }else{
+   selected=[o];
+ }
+ [...$('options').children].forEach(el=>{
+   const txt=el.lastElementChild.textContent;
+   el.classList.toggle('selected',selected.includes(txt));
+   el.firstElementChild.textContent=selected.includes(txt)?'✓':(q.type==='MA'?'☐':'◯');
+ });
+ $('submitBtn').disabled=selected.length===0;
+}
 function submitAnswer(){
- const q=questions[index],a=[...selected].sort(),c=[...q.correct].sort(),ok=JSON.stringify(a)===JSON.stringify(c);feedback={ok};
+ if(feedback || selected.length===0)return;
+ const q=questions[index],a=[...selected].sort(),c=[...q.correct].sort();
+ const ok=JSON.stringify(a)===JSON.stringify(c);
+ feedback={ok};
  if(ok){score+=2;if(effectsOn)beep(true)}else if(effectsOn)beep(false);
  [...$('options').children].forEach(b=>b.disabled=true);
- $('submitBtn').classList.add('hidden');$('nextBtn').classList.remove('hidden');$('nextBtn').textContent=index===49?'Selesai & Lihat Nilai':'Lanjut Soal Berikutnya';
+ $('submitBtn').classList.add('hidden');
+ $('nextBtn').classList.remove('hidden');
+ $('nextBtn').disabled=false;
+ $('nextBtn').textContent=index===49?'Selesai & Lihat Nilai':'Lanjut Soal Berikutnya';
  $('feedback').innerHTML=`<div class="feedback ${ok?'correct':'wrong'}"><b>${ok?'🌟 Jawaban benar!':'💪 Tetap semangat, pelajari lagi!'}</b><p>${q.explanation}</p><p class="small">Jawaban benar: ${q.correct.join(', ')}</p></div>`;
  if('speechSynthesis'in window)speechSynthesis.cancel();
 }
-function nextQuestion(){if(index<49){index++;renderQuestion()}else finishQuiz()}
+function nextQuestion(){
+ if(!feedback){alert('Pilih jawaban dan tekan Periksa Jawaban terlebih dahulu.');return;}
+ if(index<questions.length-1){index++;feedback=null;renderQuestion();}
+ else finishQuiz();
+}
 async function finishQuiz(){
  const rec={name:profile.name.trim(),class:profile.studentClass==='6A'?'VI A':'VI B',date:profile.date,subject,score};
  try{
